@@ -1,8 +1,8 @@
 # Record: Varlen attention + fused MLP + TTT
 
-**val_loss: 1.8728 | val_bpb: 1.1092** | **~15.9 MB** | 8×H100 SXM, 600s train + ~420s TTT eval
+**val_loss: 1.8729 | val_bpb: 1.1093** | **~15.9 MB** | 8×H100 SXM, 600s train + ~500s TTT eval
 
-*Note: this record is WIP because 1). code/logs need to be cleaned up, and 2). if you count quantization, it is ~13' for eval (3-4' for generating calibration data, ~4' for quantization, ~5' TTT). Speeding this up is very doable, and I will update this PR with logs and cleaned up code hopefully today, but wanted to get results in before because this is based on work from a hackathon last Sunday :)*
+Increased training speed ~3% via variable length attention and a fused MLP kernel, yielding a ~0.002 nat improvements. Re-added an optimized document-based LoRA TTT that yields a ~0.007 nat improvement. Together, these 3 improve performance ~0.009 nats.
 
 ## Main changes
 
@@ -13,7 +13,7 @@ Improves upon record [2026-03-25_ValCalib_GPTQ_XSA_BigramHash3072](https://githu
 Replaced dense causal attention with Flash Attention 3's `flash_attn_varlen_func`. During training, documents are packed into flat token buffers with `cu_seqlens` boundaries so attention is computed within documents only — the model never attends across unrelated documents that happen to be adjacent in a batch.
 
 This does two things:
-- Removes the need for the model to learn to ignore pre-BOS content from unrelated documents (this actually doesn't seem to be a major effect, at least in the current implementation, per-step loss is not noticeably better).
+- Removes the need for the model to learn to ignore pre-BOS content from unrelated documents (val loss is ~.02 nats lower at step 4000).
 - Reduces wasted FLOPs: e.g. 10 short (100-token) docs packed into a 1k-token buffer cost proportional to `100 * 100**2 = 1M` attention FLOPs vs `10 * 1000**2 = 10M` with dense attention. This leads to ~1% faster training on 8xH100, and the additional training steps buy ~0.001 nats improvement. This improvement is limited because the model is so small that there is a lot of overhead which is not in the attention so it can only be sped up so much.
 
 ### 2. Fused MLP (~1% faster training, ~0.001 nats)
@@ -36,23 +36,29 @@ Even though only ~5% of the tokens in the dataset are at postion 10k or later in
 
 ![TTT gain](ttt-gain.png)
 
+## Other small changes and notes
+
+- Removed a lot of dead code just for clarity, but this also got a small speedup as well
+- Added some useful dev things, like loading from a checkpoint just for eval
+- Counting quantization in "eval time" because it doesn't use training data and it feels wrong to have it not be capped for time
+
 ## Run results
 
 ```bash
-sam:~/parameter-golf# python records/track_10min_16mb/2026-03-31_VarLenAttn/calc_p.py \
-    --logs records/track_10min_16mb/2026-03-31_VarLenAttn/seed1-eval.txt \
-        records/track_10min_16mb/2026-03-31_VarLenAttn/seed2-eval.txt \
-        records/track_10min_16mb/2026-03-31_VarLenAttn/seed1337-total.txt
-baseline val_loss: [1.88276292 1.88156874 1.88220393]  mean=1.882179
-new      val_loss: [1.87311066 1.87298163 1.87220704]  mean=1.872766
-delta (baseline - new): 0.009412
+sam:~/parameter-golf# python records/track_10min_16mb/2026-04-04_VarLenAttn/calc_p.py \
+    --logs records/track_10min_16mb/2026-04-04_VarLenAttn/seed1-eval.txt \
+        records/track_10min_16mb/2026-04-04_VarLenAttn/seed2-eval.txt \
+        records/track_10min_16mb/2026-04-04_VarLenAttn/seed1337-total.txt
+baseline val_loss: [1.8828 1.8816 1.8822]  mean=1.88220  std=0.000490
+new      val_loss: [1.87397897 1.87277334 1.87202097]  mean=1.872924  std=0.000806
+delta (baseline - new): 0.009276
 
-baseline val_bpb:  [1.1150812  1.11437394 1.11475014]  mean=1.114735
-new      val_bpb:  [1.10936157 1.10928515 1.1088264 ]  mean=1.109158
-delta (baseline - new): 0.005577
+baseline val_bpb:  [1.1151 1.1144 1.1148]  mean=1.114767  std=0.000287
+new      val_bpb:  [1.1098759  1.10916186 1.10871626]  mean=1.109251  std=0.000478
+delta (baseline - new): 0.005515
 
 val delta loss threshold: 0.005
-p-value (new is ≥0.005 below baseline): 0.000353
+p-value (new is ≥0.005 below baseline): 0.002870
 ```
 
 Also note that the logs for this run are 5 files, not 3. For seeds 1 and 2, I ran training before implementing/tuning TTT, so to save compute I did not re-run training, but just loaded the checkpoint. For clarity, I will re-run with the final code hopefully later today.
@@ -63,7 +69,7 @@ Also note that the logs for this run are 5 files, not 3. For seeds 1 and 2, I ra
 # setup
 uv venv
 source .venv/bin/activate
-uv pip install -r records/track_10min_16mb/2026-03-31_VarLenAttn/requirements.txt
+uv pip install -r records/track_10min_16mb/2026-04-04_VarLenAttn/requirements.txt
 uv pip install --break-system-packages flash_attn_3 --find-links https://windreamer.github.io/flash-attention3-wheels/cu128_torch291
 uv pip install torch==2.9.1+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
 
@@ -74,10 +80,10 @@ python data/cached_challenge_fineweb.py --variant sp1024 --train-shards 80
 SEED=0
 ARTIFACT_DIR="runs/varlen${SEED}" SEED=$SEED \
     torchrun --standalone --nproc_per_node=8 \
-    records/track_10min_16mb/2026-03-31_VarLenAttn/train_gpt.py
+    records/track_10min_16mb/2026-04-04_VarLenAttn/train_gpt.py
 
 # eval saved checkpoint w/ TTT (useful for dev)
 EVAL_ONLY_PATH="runs/varlen${SEED}/final_model.int6.ptz" SEED=$SEED \
     torchrun --standalone --nproc_per_node=8 \
-    records/track_10min_16mb/2026-03-31_VarLenAttn/train_gpt.py
+    records/track_10min_16mb/2026-04-04_VarLenAttn/train_gpt.py
 ```

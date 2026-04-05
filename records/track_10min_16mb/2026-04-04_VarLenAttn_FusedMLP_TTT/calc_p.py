@@ -16,7 +16,7 @@ DEFAULT_BASELINE = os.path.join(REPO_ROOT, "records", "track_10min_16mb",
 def extract_metrics(path: str) -> tuple[float, float]:
     with open(path) as f:
         lines = [l.strip() for l in f if l.strip()]
-    last = lines[-1]
+    last = lines[-3]
     loss_match = re.search(r"val_loss:([\d.]+)", last)
     bpb_match = re.search(r"val_bpb:([\d.]+)", last)
     if not loss_match or not bpb_match:
@@ -47,12 +47,12 @@ def main():
         new_loss = np.array(args.losses)
         new_bpb = None
 
-    print(f"baseline val_loss: {baseline_loss}  mean={baseline_loss.mean():.6f}")
-    print(f"new      val_loss: {new_loss}  mean={new_loss.mean():.6f}")
+    print(f"baseline val_loss: {baseline_loss}  mean={baseline_loss.mean():.6f}  std={baseline_loss.std():.6f}")
+    print(f"new      val_loss: {new_loss}  mean={new_loss.mean():.6f}  std={new_loss.std():.6f}")
     print(f"delta (baseline - new): {baseline_loss.mean() - new_loss.mean():.6f}")
     if new_bpb is not None:
-        print(f"\nbaseline val_bpb:  {baseline_bpb}  mean={baseline_bpb.mean():.6f}")
-        print(f"new      val_bpb:  {new_bpb}  mean={new_bpb.mean():.6f}")
+        print(f"\nbaseline val_bpb:  {baseline_bpb}  mean={baseline_bpb.mean():.6f}  std={baseline_bpb.std():.6f}")
+        print(f"new      val_bpb:  {new_bpb}  mean={new_bpb.mean():.6f}  std={new_bpb.std():.6f}")
         print(f"delta (baseline - new): {baseline_bpb.mean() - new_bpb.mean():.6f}")
     print(f"\nval delta loss threshold: {args.threshold}")
 

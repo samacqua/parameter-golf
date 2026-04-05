@@ -1,0 +1,50 @@
+{
+    "author": "saml212",
+    "github_id": "samacqua",
+    "name": "Varlen Attention + Fused MLP + TTT",
+    "blurb": "Varlen attention (flash_attn_varlen_func) + fused Triton MLP kernel + LoRA-based test-time training with shared-queue scheduling. Builds on ValCalib_GPTQ_XSA_BigramHash3072 stack. 3-seed exact mean: 1.10915771 BPB / 1.87276644 nats, beating prior record's 1.11473509 BPB / 1.88217853 nats by 0.00941209 nats.",
+    "date": "2026-04-04",
+    "track": "10min_16mb",
+    "val_loss": 1.87276644,
+    "val_bpb": 1.10915771,
+    "val_loss_std": 0.00048873,
+    "val_bpb_std": 0.00028945,
+    "seeds": [1, 2, 1337],
+    "seed_results": {
+      "1": {
+        "val_loss": 1.87311066,
+        "val_bpb": 1.10936157,
+        "artifact_bytes": 15887397,
+        "steps": 7077,
+        "step_avg_ms": 84.80
+      },
+      "2": {
+        "val_loss": 1.87298163,
+        "val_bpb": 1.10928515,
+        "artifact_bytes": 15892540,
+        "steps": 7087,
+        "step_avg_ms": 84.67
+      },
+      "1337": {
+        "val_loss": 1.87220704,
+        "val_bpb": 1.10882640,
+        "artifact_bytes": 15894331,
+        "steps": 7112,
+        "step_avg_ms": 84.39
+      }
+    },
+    "comparison_baseline_pr": "ValCalib_GPTQ_XSA_BigramHash3072",
+    "delta_nats": -0.00941209,
+    "delta_bpb": -0.00557738,
+    "p_value": 0.000353,
+    "artifact_bytes_mean": 15891422,
+    "artifact_bytes_max": 15894331,
+    "train_steps_mean": 7092,
+    "step_avg_ms_mean": 84.62,
+    "hardware": "8xH100 80GB SXM",
+    "pytorch_version": "2.9.1+cu128",
+    "cuda_version": "12.8",
+    "flash_attn_version": "FA3 Hopper kernels (flash_attn_varlen_func)",
+    "calibration": "AR self-generated (64 seqs x 2048 tokens, temp=0.8, no external data)",
+    "technique_summary": "Varlen attention + fused Triton MLP + LoRA TTT (chunk_size=32, RMSProp) + AR self-gen GPTQ + XSA-all + BigramHash 3072x112 + Parallel Muon + LZMA9"
+  }
